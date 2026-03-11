@@ -6,32 +6,36 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const GEMINI_KEY = process.env.GEMINI_KEY;
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`;
+const GROQ_KEY = process.env.GROQ_KEY;
 
 app.post("/ask", async (req, res) => {
   try {
     const { system, messages } = req.body;
-    const userMessage = messages[messages.length - 1].content;
-    const fullPrompt = system ? `${system}\n\n${userMessage}` : userMessage;
 
-    const response = await fetch(GEMINI_URL, {
+    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${GROQ_KEY}`
+      },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: fullPrompt }] }],
-        generationConfig: { maxOutputTokens: 1000 }
+        model: "llama3-8b-8192",
+        max_tokens: 1000,
+        messages: [
+          ...(system ? [{ role: "system", content: system }] : []),
+          ...messages
+        ]
       }),
     });
 
     const data = await response.json();
 
     if (!response.ok) {
-      console.error("Gemini error:", data);
-      return res.status(500).json({ error: "Gemini API error", detail: data });
+      console.error("Groq error:", data);
+      return res.status(500).json({ error: "Groq API error", detail: data });
     }
 
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    const text = data.choices?.[0]?.message?.content || "";
 
     // Return in same format as Anthropic so the app doesn't need changes
     res.json({ content: [{ type: "text", text }] });
