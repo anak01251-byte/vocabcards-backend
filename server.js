@@ -6,27 +6,37 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const ANTHROPIC_KEY = process.env.ANTHROPIC_KEY;
+const GEMINI_KEY = process.env.GEMINI_KEY;
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`;
 
 app.post("/ask", async (req, res) => {
   try {
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
+    const { system, messages } = req.body;
+    const userMessage = messages[messages.length - 1].content;
+    const fullPrompt = system ? `${system}\n\n${userMessage}` : userMessage;
+
+    const response = await fetch(GEMINI_URL, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": ANTHROPIC_KEY,
-        "anthropic-version": "2023-06-01",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 1000,
-        system: req.body.system,
-        messages: req.body.messages,
+        contents: [{ parts: [{ text: fullPrompt }] }],
+        generationConfig: { maxOutputTokens: 1000 }
       }),
     });
+
     const data = await response.json();
-    res.json(data);
+
+    if (!response.ok) {
+      console.error("Gemini error:", data);
+      return res.status(500).json({ error: "Gemini API error", detail: data });
+    }
+
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+
+    // Return in same format as Anthropic so the app doesn't need changes
+    res.json({ content: [{ type: "text", text }] });
   } catch (err) {
+    console.error("Server error:", err);
     res.status(500).json({ error: "Server error", detail: err.message });
   }
 });
@@ -35,3 +45,4 @@ app.get("/health", (_, res) => res.json({ ok: true }));
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => console.log(`VocabCards backend running on port ${PORT}`));
+
